@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/vvojtisek/dice_roller/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vvojtisek/dice_roller/actions/workflows/ci.yml)
 [![Security](https://github.com/vvojtisek/dice_roller/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/vvojtisek/dice_roller/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/vvojtisek/dice_roller)](https://github.com/vvojtisek/dice_roller/releases/latest)
 
 A free virtual dice app for Android, with no ads, no account and no data collection.
@@ -114,6 +115,6 @@ See [docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md).
 
 ## License
 
-No license has been chosen yet. Until one is added, the code is visible but not licensed for reuse. Choosing a license is the first item in the improvement plan.
+[MIT](LICENSE). You may use, copy, modify and distribute the app and its code freely, including commercially, as long as the copyright notice is kept.
 
 Dice icons by [Delapouite](https://delapouite.com/) from [game-icons.net](https://game-icons.net), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
