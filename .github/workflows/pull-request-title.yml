@@ -1,0 +1,26 @@
+name: Pull request title
+
+# Pull requests are squash-merged, so the title becomes the commit subject on
+# main. release-please derives the next version and the changelog from those
+# subjects, so the title must be a Conventional Commit before merge.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional-commit:
+    name: Conventional Commit title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check title
+        env:
+          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert|deps)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ ! "$PULL_REQUEST_TITLE" =~ $pattern ]]; then
+            echo "::error::Pull request title must be a Conventional Commit, for example 'feat: add d100 dice' or 'fix(stats): reset counts per die'. Got: $PULL_REQUEST_TITLE"
+            exit 1
+          fi
