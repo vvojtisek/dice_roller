@@ -344,93 +344,14 @@ private val jsonConfig = Json {
     encodeDefaults = true
 }
 
-@Serializable
-data class DicePreset(
-    val id: String = "",
-    val label: String = "",            // user-facing, e.g. "2× d6", "semafor", "2d10"
-    val dieTypeId: String = "",        // must resolve against DiceTypes
-    val count: Int = 1,               // 1..4
-    val showSymbols: Boolean? = null,   // null = follow the global setting
-)
-
-@Serializable
-data class DiceProfile(
-    val id: String = "",
-    val name: String = "",
-    val presets: List<DicePreset> = emptyList(),
-)
-
-@Serializable
-data class ProfileStore(
-    val schemaVersion: Int = 1,
-    val profiles: List<DiceProfile> = emptyList(),
-    val activeProfileId: String? = null,
-    val activePresetId: String? = null,
-)
-
-fun createDefaultProfileStore(): ProfileStore {
-    val presets = listOf(
-        DicePreset(id = "preset_pips", label = "Body (D6)", dieTypeId = "pips", count = 1),
-        DicePreset(id = "preset_numeral", label = "Číselná (D6)", dieTypeId = "numeral", count = 1),
-        DicePreset(id = "preset_d4", label = "D4", dieTypeId = "d4", count = 1),
-        DicePreset(id = "preset_d8", label = "D8", dieTypeId = "d8", count = 1),
-        DicePreset(id = "preset_d10", label = "D10", dieTypeId = "d10", count = 1),
-        DicePreset(id = "preset_d12", label = "D12", dieTypeId = "d12", count = 1),
-        DicePreset(id = "preset_d20", label = "D20", dieTypeId = "d20", count = 1),
-        DicePreset(id = "preset_swatch", label = "Barevná", dieTypeId = "swatch_six_color", count = 1)
-    )
-    val defaultProfile = DiceProfile(
-        id = "profile_zakladni",
-        name = "Základní",
-        presets = presets
-    )
-    return ProfileStore(
-        schemaVersion = 1,
-        profiles = listOf(defaultProfile),
-        activeProfileId = "profile_zakladni",
-        activePresetId = "preset_pips"
-    )
-}
-
 suspend fun loadProfileStore(context: android.content.Context): ProfileStore {
     return try {
         val prefs = context.dataStore.data.first()
         val jsonStr = prefs[PROFILE_STORE_KEY]
         if (jsonStr != null) {
             val store = jsonConfig.decodeFromString<ProfileStore>(jsonStr)
-            // Filter out invalid dieTypeIds and make sure we don't crash
-            val validatedProfiles = store.profiles.map { profile ->
-                profile.copy(
-                    presets = profile.presets.filter { preset ->
-                        val isValid = preset.dieTypeId in listOf(
-                            "pips", "numeral", "d4", "d8", "d10", "d12", "d20",
-                            "swatch_two_color", "swatch_three_color", "swatch_six_color"
-                        )
-                        if (!isValid) {
-                            android.util.Log.w("DiceRoller", "Neplatné dieTypeId: ${preset.dieTypeId}, vynecháno.")
-                        }
-                        isValid
-                    }
-                )
-            }
-            // If active preset or active profile got deleted / invalid, adjust them
-            val updatedStore = store.copy(profiles = validatedProfiles)
-            val activeProf = updatedStore.profiles.find { it.id == updatedStore.activeProfileId }
-            if (activeProf == null) {
-                val firstProf = updatedStore.profiles.firstOrNull()
-                updatedStore.copy(
-                    activeProfileId = firstProf?.id,
-                    activePresetId = firstProf?.presets?.firstOrNull()?.id
-                )
-            } else {
-                val activePres = activeProf.presets.find { it.id == updatedStore.activePresetId }
-                if (activePres == null) {
-                    updatedStore.copy(
-                        activePresetId = activeProf.presets.firstOrNull()?.id
-                    )
-                } else {
-                    updatedStore
-                }
+            sanitizeProfileStore(store) { invalidId ->
+                android.util.Log.w("DiceRoller", "Neplatné dieTypeId: $invalidId, vynecháno.")
             }
         } else {
             createDefaultProfileStore()
@@ -789,10 +710,6 @@ object DiceTypes {
     val D20 = DieType("d20", 20) { FaceContent.Numeral(it) }
 }
 
-enum class ColorMode {
-    TWO_COLOR, THREE_COLOR, SIX_COLOR
-}
-
 object DicePalettes {
     val palettes: Map<ColorMode, List<Pair<Color, Symbol>>> = mapOf(
         ColorMode.TWO_COLOR to listOf(
@@ -961,36 +878,9 @@ fun DiceRollerApp() {
         val activePres = activeProf?.presets?.find { it.id == store.activePresetId }
         if (activePres != null) {
             numberOfDice = activePres.count
-            when {
-                activePres.dieTypeId == "pips" -> {
-                    selectedDieTypeId = "pips"
-                }
-                activePres.dieTypeId == "numeral" -> {
-                    selectedDieTypeId = "numeral"
-                }
-                activePres.dieTypeId == "d4" -> {
-                    selectedDieTypeId = "d4"
-                }
-                activePres.dieTypeId == "d8" -> {
-                    selectedDieTypeId = "d8"
-                }
-                activePres.dieTypeId == "d10" -> {
-                    selectedDieTypeId = "d10"
-                }
-                activePres.dieTypeId == "d12" -> {
-                    selectedDieTypeId = "d12"
-                }
-                activePres.dieTypeId == "d20" -> {
-                    selectedDieTypeId = "d20"
-                }
-                activePres.dieTypeId.startsWith("swatch_") -> {
-                    selectedDieTypeId = "swatch"
-                    selectedColorMode = when (activePres.dieTypeId) {
-                        "swatch_two_color" -> ColorMode.TWO_COLOR
-                        "swatch_three_color" -> ColorMode.THREE_COLOR
-                        else -> ColorMode.SIX_COLOR
-                    }
-                }
+            dieSelectionFor(activePres.dieTypeId)?.let { selection ->
+                selectedDieTypeId = selection.selectedDieTypeId
+                selection.colorMode?.let { selectedColorMode = it }
             }
         }
         val storedColors = loadDiceColors(context)
@@ -1072,13 +962,6 @@ fun DiceRollerApp() {
         }
     }
 
-    fun getStatsKey(dieType: DieType): String {
-        return when (dieType.id) {
-            "pips", "numeral" -> "d6"
-            else -> if (dieType.id.startsWith("swatch")) "d6" else dieType.id
-        }
-    }
-
     // 2D Dice Animation states (one for each of up to 4 dice)
     val dieStates = remember {
         List(4) {
@@ -1093,36 +976,9 @@ fun DiceRollerApp() {
 
     val applyPreset: (DicePreset) -> Unit = { preset ->
         numberOfDice = preset.count
-        when {
-            preset.dieTypeId == "pips" -> {
-                selectedDieTypeId = "pips"
-            }
-            preset.dieTypeId == "numeral" -> {
-                selectedDieTypeId = "numeral"
-            }
-            preset.dieTypeId == "d4" -> {
-                selectedDieTypeId = "d4"
-            }
-            preset.dieTypeId == "d8" -> {
-                selectedDieTypeId = "d8"
-            }
-            preset.dieTypeId == "d10" -> {
-                selectedDieTypeId = "d10"
-            }
-            preset.dieTypeId == "d12" -> {
-                selectedDieTypeId = "d12"
-            }
-            preset.dieTypeId == "d20" -> {
-                selectedDieTypeId = "d20"
-            }
-            preset.dieTypeId.startsWith("swatch_") -> {
-                selectedDieTypeId = "swatch"
-                selectedColorMode = when (preset.dieTypeId) {
-                    "swatch_two_color" -> ColorMode.TWO_COLOR
-                    "swatch_three_color" -> ColorMode.THREE_COLOR
-                    else -> ColorMode.SIX_COLOR
-                }
-            }
+        dieSelectionFor(preset.dieTypeId)?.let { selection ->
+            selectedDieTypeId = selection.selectedDieTypeId
+            selection.colorMode?.let { selectedColorMode = it }
         }
     }
 
@@ -1154,7 +1010,7 @@ fun DiceRollerApp() {
                 isRolling = true
 
                 // Staggered roll animations for each die
-                val finalValues = List(numberOfDice) { (1..currentDieType.sides).random() }
+                val finalValues = rollDice(numberOfDice, currentDieType.sides)
                 
                 val jobs = (0 until numberOfDice).map { i ->
                     launch {
@@ -1165,9 +1021,8 @@ fun DiceRollerApp() {
                         val snapDegrees = faceContent.settleSnapDegrees
 
                         val baseTravel = (900..1260).random().toFloat()
-                        val nearestSnap = (baseTravel / snapDegrees).let { Math.round(it) * snapDegrees }
                         val jitter = (Random.nextFloat() * (DiceAnimConfig.settleJitterDeg * 2f)) - DiceAnimConfig.settleJitterDeg
-                        val targetRot = nearestSnap + jitter
+                        val targetRot = settleRotation(baseTravel, snapDegrees, jitter)
                         
                         val driftXVal = (Random.nextFloat() * 20f) - 10f // ±10dp drift
                         
@@ -1214,14 +1069,11 @@ fun DiceRollerApp() {
 
                 // Record history (keep up to 15 records)
                 val formatTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                history.add(0, RollRecord(formatTime, finalValues))
-                if (history.size > 15) {
-                    history.removeAt(history.size - 1)
-                }
+                history.addNewestBounded(RollRecord(formatTime, finalValues))
 
                 // Increment counts for statistics
                 finalValues.forEach { v ->
-                    val key = getStatsKey(currentDieType)
+                    val key = statsKeyFor(currentDieType.id)
                     val array = statsStorage[key] ?: LongArray(currentDieType.sides).also { statsStorage[key] = it }
                     if (v - 1 in array.indices) {
                         array[v - 1] = array[v - 1] + 1
@@ -3351,30 +3203,11 @@ fun StatsPanel(
                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                 )
             } else {
-                val expected = totalRollsForActive.toDouble() / sides.toDouble()
-                var chi2 = 0.0
-                for (c in counts) {
-                    val diff = c.toDouble() - expected
-                    chi2 += (diff * diff) / expected
-                }
-
-                val df = sides - 1
-
-                val pValue = if (chi2 == 0.0) {
-                    1.0
-                } else {
-                    val part1 = 9.0 * df / 2.0
-                    val term1 = Math.pow(chi2 / df.toDouble(), 1.0 / 3.0)
-                    val term2 = 1.0 - (2.0 / (9.0 * df))
-                    val z = Math.sqrt(part1) * (term1 - term2)
-
-                    val absZ = Math.abs(z)
-                    val phi = 1.0 / (1.0 + Math.exp(-1.5976 * absZ - 0.070566 * absZ * absZ * absZ))
-                    val pValApprox = if (z >= 0) 1.0 - phi else phi
-                    pValApprox.coerceIn(0.0, 1.0)
-                }
-
-                val looksFair = pValue >= 0.01
+                val fairness = chiSquareFairness(counts) ?: FairnessResult(0.0, sides - 1, 1.0)
+                val chi2 = fairness.chiSquare
+                val df = fairness.degreesOfFreedom
+                val pValue = fairness.pValue
+                val looksFair = fairness.looksFair
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
