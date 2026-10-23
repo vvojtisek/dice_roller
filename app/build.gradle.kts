@@ -75,6 +75,15 @@ android {
   }
 }
 
+// Print full assertion messages and test output so CI logs explain failures on their own.
+tasks.withType<Test>().configureEach {
+  testLogging {
+    events("failed")
+    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    showStandardStreams = true
+  }
+}
+
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
 secrets {
