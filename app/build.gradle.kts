@@ -77,6 +77,10 @@ android {
 
 // Print full assertion messages and test output so CI logs explain failures on their own.
 tasks.withType<Test>().configureEach {
+  // Robolectric 4.17 reads FileDescriptor internals through jdk.internal.access.SharedSecrets
+  // when it sets up the SDK 36 ApplicationSharedMemory; JDK 17+ hides that package unless it is
+  // exported to the unnamed module.
+  jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
   testLogging {
     events("failed")
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
