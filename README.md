@@ -35,7 +35,7 @@ If a release only has a `-debug.apk`, it was built before a release signing key 
 
 Requirements:
 
-- JDK 17 or newer
+- JDK 21 or newer (Robolectric needs Java 21 to run the unit tests against Android SDK 36)
 - Android SDK with platform 36.1 (Android Studio downloads it on first sync), or a recent Android Studio version that supports Android Gradle Plugin 9.1
 
 ```bash
