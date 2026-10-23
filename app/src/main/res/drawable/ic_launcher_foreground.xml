@@ -1,0 +1,43 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Dice Outer Border/Shadow -->
+    <path
+        android:fillColor="#1A1C29"
+        android:pathData="M 32,24 h 44 c 5.52,0 10,4.48 10,10 v 44 c 0,5.52 -4.48,10 -10,10 H 32 c -5.52,0 -10,-4.48 -10,-10 V 34 c 0,-5.52 4.48,-10 10,-10 Z" />
+        
+    <!-- Dice Body (Ivory) -->
+    <path
+        android:fillColor="#F0F1F7"
+        android:pathData="M 34,26 h 40 c 4.42,0 8,3.58 8,8 v 40 c 0,4.42 -3.58,8 -8,8 H 34 c -4.42,0 -8,-3.58 -8,-8 V 34 c 0,-4.42 3.58,-8 8,-8 Z" />
+
+    <!-- 6 Pips (Dots) in Obsidian -->
+    <!-- Top Left -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M 38,38 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
+    <!-- Top Right -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M 70,38 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
+    <!-- Middle Left -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M 38,54 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
+    <!-- Middle Right -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M 70,54 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
+    <!-- Bottom Left -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M 38,70 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
+    <!-- Bottom Right -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M 70,70 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
+
+</vector>

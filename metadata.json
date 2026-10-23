@@ -1,0 +1,6 @@
+{
+  "name": "Dice Roller",
+  "description": "A 6-sided dice rolling app with interactive animations and custom synthesized landing sounds.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
