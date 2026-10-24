@@ -93,7 +93,7 @@ class DiceRollerE2ETest {
     composeTestRule.onNodeWithTag("apply_to_all_colors_button").performScrollTo().performClick()
     composeTestRule.onNodeWithTag("done_color_dialog_button").assertIsDisplayed().performClick()
 
-    val faces = (0 until 6).map { composeTestRule.onNodeWithTag("die_face_$it").assertIsDisplayed().getBoundsInRoot() }
+    val faces = (0 until 6).map { composeTestRule.onNodeWithTag("die_face_$it", useUnmergedTree = true).assertIsDisplayed().getBoundsInRoot() }
     faces.forEach { assertEquals((it.right - it.left).value, (it.bottom - it.top).value, 1f) }
     assertTrue("second row below the first", faces[3].top > faces[0].bottom)
 

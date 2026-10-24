@@ -140,8 +140,8 @@ class ExampleRobolectricTest {
       6,
       listOf("Porcelán", "Modrá skalice", "Chromová žluť", "Rodochrozit", "Ametyst", "Olovo")
     )
-    val top = (0..2).map { composeTestRule.onNodeWithTag("die_face_$it").getBoundsInRoot().top }
-    val bottom = (3..5).map { composeTestRule.onNodeWithTag("die_face_$it").getBoundsInRoot().top }
+    val top = (0..2).map { composeTestRule.onNodeWithTag("die_face_$it", useUnmergedTree = true).getBoundsInRoot().top }
+    val bottom = (3..5).map { composeTestRule.onNodeWithTag("die_face_$it", useUnmergedTree = true).getBoundsInRoot().top }
     assertTrue("rows: $top / $bottom", top.toSet().size == 1 && bottom.toSet().size == 1 && bottom[0] > top[0])
   }
 
@@ -161,7 +161,7 @@ class ExampleRobolectricTest {
       )
     }
 
-    val bounds = (0 until count).map { composeTestRule.onNodeWithTag("die_face_$it").getBoundsInRoot() }
+    val bounds = (0 until count).map { composeTestRule.onNodeWithTag("die_face_$it", useUnmergedTree = true).getBoundsInRoot() }
     val tolerance = 0.5.dp
     val edge = bounds[0].right - bounds[0].left
     bounds.forEachIndexed { i, b ->
