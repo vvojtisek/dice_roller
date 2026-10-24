@@ -146,15 +146,17 @@ class ExampleRobolectricTest {
   }
 
   private fun assertDiceAreSquareAndEvenlySpaced(count: Int, colors: List<String>) {
+    // Built outside composition: Animatable must not be created during composition without remember.
+    val dieStates = List(count) {
+      DieAnimState(Animatable(0f), Animatable(1f), driftX = 0f, targetRotation = 0f)
+    }
     composeTestRule.setContent {
       PlaygroundSection(
         numberOfDice = count,
         displayValues = List(count) { it % 6 + 1 },
         isDarkTheme = true,
         isRolling = false,
-        dieStates = List(count) {
-          DieAnimState(Animatable(0f), Animatable(1f), driftX = 0f, targetRotation = 0f)
-        },
+        dieStates = dieStates,
         dieType = DefaultDieTypes.pips,
         diceColors = colors,
         onDiceClick = {}
