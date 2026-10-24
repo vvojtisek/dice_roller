@@ -48,6 +48,106 @@ class DiceLogicTest {
     rollDice(1, 0)
   }
 
+  // ---------- dice grid layout ----------
+
+  @Test
+  fun `diceRowSizes puts at most three dice per row and balances the rows`() {
+    assertEquals(listOf(1), diceRowSizes(1))
+    assertEquals(listOf(2), diceRowSizes(2))
+    assertEquals(listOf(3), diceRowSizes(3))
+    assertEquals(listOf(2, 2), diceRowSizes(4))
+    assertEquals(listOf(3, 2), diceRowSizes(5))
+    assertEquals(listOf(3, 3), diceRowSizes(6))
+    for (count in MIN_DICE..MAX_DICE) {
+      val rows = diceRowSizes(count)
+      assertEquals(count, rows.sum())
+      assertTrue(rows.all { it in 1..MAX_DICE_PER_ROW })
+      assertTrue(rows.size <= 2)
+    }
+  }
+
+  @Test
+  fun `diceRowSizes is empty for no dice`() {
+    assertTrue(diceRowSizes(0).isEmpty())
+  }
+
+  @Test
+  fun `dieFaceSize uses the preferred size when the row has room`() {
+    assertEquals(130f, dieFaceSize(1, 460f, 12f), 0.001f)
+    assertEquals(105f, dieFaceSize(2, 460f, 12f), 0.001f)
+    assertEquals(88f, dieFaceSize(3, 460f, 12f), 0.001f)
+    assertEquals(76f, dieFaceSize(6, 460f, 12f), 0.001f)
+  }
+
+  @Test
+  fun `dieFaceSize shrinks every die equally so the widest row fits`() {
+    // Regression: the third die used to be squeezed into a non-square box on narrow screens.
+    for (count in MIN_DICE..MAX_DICE) {
+      val width = 240f
+      val gap = 12f
+      val size = dieFaceSize(count, width, gap)
+      val columns = diceRowSizes(count).max()
+      assertTrue("count=$count size=$size", size * columns + gap * (columns - 1) <= width + 0.001f)
+      assertTrue(size > 0f)
+    }
+    assertEquals(72f, dieFaceSize(3, 240f, 12f), 0.001f)
+  }
+
+  @Test
+  fun `czechDiceCount uses the right plural`() {
+    assertEquals("1 kostka", czechDiceCount(1))
+    assertEquals("3 kostky", czechDiceCount(3))
+    assertEquals("4 kostky", czechDiceCount(4))
+    assertEquals("5 kostek", czechDiceCount(5))
+    assertEquals("6 kostek", czechDiceCount(6))
+  }
+
+  // ---------- resolveDiceColors ----------
+
+  private val palette = listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+
+  @Test
+  fun `resolveDiceColors leaves fixed colors untouched`() {
+    val assigned = listOf("A", "B", "A")
+    assertEquals(assigned, resolveDiceColors(assigned, palette, Random(1)))
+  }
+
+  @Test
+  fun `resolveDiceColors gives every random die a distinct palette color`() {
+    repeat(200) { seed ->
+      val resolved = resolveDiceColors(List(MAX_DICE) { RANDOM_DIE_COLOR }, palette, Random(seed))
+      assertEquals(MAX_DICE, resolved.size)
+      assertTrue(resolved.all { it in palette })
+      assertEquals(MAX_DICE, resolved.toSet().size)
+    }
+  }
+
+  @Test
+  fun `resolveDiceColors avoids colors already used by fixed dice`() {
+    repeat(200) { seed ->
+      val resolved = resolveDiceColors(listOf("A", RANDOM_DIE_COLOR, "B", RANDOM_DIE_COLOR), palette, Random(seed))
+      assertEquals("A", resolved[0])
+      assertEquals("B", resolved[2])
+      assertTrue(resolved[1] !in setOf("A", "B"))
+      assertTrue(resolved[3] !in setOf("A", "B"))
+      assertTrue(resolved[1] != resolved[3])
+    }
+  }
+
+  @Test
+  fun `resolveDiceColors varies between rolls`() {
+    val random = Random(5)
+    val rolls = List(50) { resolveDiceColors(List(3) { RANDOM_DIE_COLOR }, palette, random) }.toSet()
+    assertTrue(rolls.size > 1)
+  }
+
+  @Test
+  fun `resolveDiceColors reuses colors only when the palette runs out`() {
+    val resolved = resolveDiceColors(List(4) { RANDOM_DIE_COLOR }, listOf("A", "B"), Random(3))
+    assertEquals(setOf("A", "B"), resolved.toSet())
+    assertTrue(resolved[0] != resolved[1])
+  }
+
   // ---------- settleRotation ----------
 
   @Test

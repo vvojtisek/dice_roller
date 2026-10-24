@@ -21,7 +21,7 @@ data class DicePreset(
     val id: String = "",
     val label: String = "",            // user-facing, e.g. "2× d6", "semafor", "2d10"
     val dieTypeId: String = "",        // must resolve against DiceTypes
-    val count: Int = 1,               // 1..4
+    val count: Int = 1,               // MIN_DICE..MAX_DICE
     val showSymbols: Boolean? = null,   // null = follow the global setting
 )
 
@@ -41,7 +41,11 @@ data class ProfileStore(
 )
 
 const val MIN_DICE = 1
-const val MAX_DICE = 4
+const val MAX_DICE = 6
+const val MAX_DICE_PER_ROW = 3
+
+/** Stored in place of a theme name when a die should get a random palette color on every roll. */
+const val RANDOM_DIE_COLOR = "Náhodná"
 const val MAX_HISTORY_SIZE = 15
 
 // Fairness verdict threshold used by the statistics panel.
@@ -126,6 +130,62 @@ fun statsKeyFor(dieTypeId: String): String = when {
     dieTypeId == "pips" || dieTypeId == "numeral" -> "d6"
     dieTypeId.startsWith("swatch") -> "d6"
     else -> dieTypeId
+}
+
+/** Czech label for a dice count: "1 kostka", "2 kostky", "5 kostek". */
+fun czechDiceCount(count: Int): String = when (count) {
+    1 -> "1 kostka"
+    2, 3, 4 -> "$count kostky"
+    else -> "$count kostek"
+}
+
+/**
+ * Splits [count] dice into rows of at most [perRow], with row lengths differing by at most one
+ * and longer rows first: 3 -> [3], 4 -> [2, 2], 5 -> [3, 2], 6 -> [3, 3].
+ */
+fun diceRowSizes(count: Int, perRow: Int = MAX_DICE_PER_ROW): List<Int> {
+    require(perRow >= 1) { "perRow must be >= 1, was $perRow" }
+    if (count <= 0) return emptyList()
+    val rows = (count + perRow - 1) / perRow
+    return List(rows) { row -> count / rows + if (row < count % rows) 1 else 0 }
+}
+
+/** Largest preferred edge length (dp) of a die face when [count] dice are shown. */
+fun maxDieFaceSize(count: Int): Float = when {
+    count <= 1 -> 130f
+    count == 2 -> 105f
+    count == 3 -> 88f
+    else -> 76f
+}
+
+/**
+ * Edge length (dp) of every die face for [count] dice laid out by [diceRowSizes] in
+ * [availableWidth] dp with [gap] dp between neighbours. All dice share one size, so faces
+ * stay square and never overflow the row.
+ */
+fun dieFaceSize(count: Int, availableWidth: Float, gap: Float): Float {
+    val columns = diceRowSizes(count).maxOrNull() ?: 1
+    val fitWidth = (availableWidth - gap * (columns - 1)) / columns
+    return minOf(maxDieFaceSize(count), fitWidth).coerceAtLeast(0f)
+}
+
+/**
+ * Replaces every [RANDOM_DIE_COLOR] entry in [assigned] with a color from [palette]. Random dice
+ * get distinct colors while the palette allows it, preferring colors no fixed die already uses.
+ */
+fun resolveDiceColors(
+    assigned: List<String>,
+    palette: List<String>,
+    random: Random = Random.Default
+): List<String> {
+    if (palette.isEmpty() || RANDOM_DIE_COLOR !in assigned) return assigned
+    val fixed = assigned.filter { it != RANDOM_DIE_COLOR }.toSet()
+    val (unused, used) = palette.distinct().partition { it !in fixed }
+    val order = unused.shuffled(random) + used.shuffled(random)
+    var next = 0
+    return assigned.map { name ->
+        if (name == RANDOM_DIE_COLOR) order[next++ % order.size] else name
+    }
 }
 
 fun rollDice(count: Int, sides: Int, random: Random = Random.Default): List<Int> {

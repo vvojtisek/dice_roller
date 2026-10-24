@@ -3,6 +3,7 @@ package com.example
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -49,7 +51,7 @@ class DiceRollerE2ETest {
     composeTestRule.onNodeWithTag("dice_throw_area").performClick()
 
     val sum = waitForLatestHistorySum()
-    // Default and persisted presets use 1 to 4 dice with at most 20 sides.
+    // Default and persisted presets use 1 to MAX_DICE dice with at most 20 sides.
     assertTrue("Unexpected sum $sum", sum in 1..(MAX_DICE * 20))
   }
 
@@ -77,6 +79,28 @@ class DiceRollerE2ETest {
     assertTrue("3d8 rolled $sum", sum in 3..24)
     composeTestRule.onNodeWithTag("close_stats_history_button").performClick()
     composeTestRule.onNodeWithText("Celkový součet:", substring = true).assertExists()
+  }
+
+  @Test
+  fun sixRandomColoredDiceRollInTwoRows() {
+    composeTestRule.onNodeWithTag("settings_button").performClick()
+    composeTestRule.onNodeWithTag("dice_count_6").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("die_type_pips").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("save_settings_button").performScrollTo().performClick()
+
+    composeTestRule.onNodeWithTag("dice_colors_button").performClick()
+    composeTestRule.onNodeWithTag("theme_option_náhodná").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("apply_to_all_colors_button").performScrollTo().performClick()
+    composeTestRule.onNodeWithTag("done_color_dialog_button").assertIsDisplayed().performClick()
+
+    val faces = (0 until 6).map { composeTestRule.onNodeWithTag("die_face_$it").assertIsDisplayed().getBoundsInRoot() }
+    faces.forEach { assertEquals((it.right - it.left).value, (it.bottom - it.top).value, 1f) }
+    assertTrue("second row below the first", faces[3].top > faces[0].bottom)
+
+    composeTestRule.onNodeWithTag("dice_throw_area").performClick()
+
+    val sum = waitForLatestHistorySum()
+    assertTrue("6d6 rolled $sum", sum in 6..36)
   }
 
   @Test
