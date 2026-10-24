@@ -46,6 +46,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -79,6 +80,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
@@ -129,6 +131,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.TextStyle
@@ -391,6 +396,9 @@ data class ChemistryDieTheme(
         "cinnabar" -> Color(0xFFE34234)
         "chrome_yellow" -> Color(0xFFFFE600)
         "graphite" -> Color(0xFF333333)
+        "rhodochrosite" -> Color(0xFFF06292)
+        "amethyst" -> Color(0xFF9966CC)
+        "lead" -> Color(0xFF9E9E9E)
         else -> Color(0xFFF8F9FA)
     }
 
@@ -456,8 +464,39 @@ val CHEMISTRY_THEMES = listOf(
         translationSub = "Graphite",
         baseHex = "#333333",
         pipHex = "#F5F5F5"
+    ),
+    ChemistryDieTheme(
+        id = "rhodochrosite",
+        name = "Rodochrozit",
+        labelCzech = "Rodochrozit (růžová)",
+        translationSub = "Rhodochrosite (pink)",
+        baseHex = "#F06292",
+        pipHex = "#1A1A1A"
+    ),
+    ChemistryDieTheme(
+        id = "amethyst",
+        name = "Ametyst",
+        labelCzech = "Ametyst (fialová)",
+        translationSub = "Amethyst (purple)",
+        baseHex = "#9966CC",
+        pipHex = "#1A1A1A"
+    ),
+    ChemistryDieTheme(
+        id = "lead",
+        name = "Olovo",
+        labelCzech = "Olovo (šedá)",
+        translationSub = "Lead (grey)",
+        baseHex = "#9E9E9E",
+        pipHex = "#1A1A1A"
     )
 )
+
+/** Theme names a [RANDOM_DIE_COLOR] die can land on. */
+val CHEMISTRY_THEME_NAMES: List<String> = CHEMISTRY_THEMES.map { it.name }
+
+/** Display label for a stored die color, including the random mode. */
+fun dieColorLabel(name: String): String =
+    if (name == RANDOM_DIE_COLOR) RANDOM_DIE_COLOR else getChemistryThemeByName(name).labelCzech
 
 fun getChemistryThemeByName(name: String): ChemistryDieTheme {
     return CHEMISTRY_THEMES.find {
@@ -474,10 +513,10 @@ suspend fun loadDiceColors(context: android.content.Context): List<String> {
         if (!jsonStr.isNullOrBlank()) {
             jsonConfig.decodeFromString<List<String>>(jsonStr)
         } else {
-            List(4) { "Porcelán" }
+            List(MAX_DICE) { "Porcelán" }
         }
     } catch (e: Exception) {
-        List(4) { "Porcelán" }
+        List(MAX_DICE) { "Porcelán" }
     }
 }
 
@@ -834,7 +873,9 @@ fun DiceRollerApp() {
     var selectedDieTypeId by remember { mutableStateOf("pips") }
     var selectedColorMode by remember { mutableStateOf(ColorMode.SIX_COLOR) }
     var showSymbols by remember { mutableStateOf(true) }
-    var diceColors by remember { mutableStateOf(listOf("Porcelán", "Porcelán", "Porcelán", "Porcelán")) }
+    var diceColors by remember { mutableStateOf(List(MAX_DICE) { "Porcelán" }) }
+    // Colors actually painted on the dice: diceColors with every random entry resolved to a theme.
+    val shownDiceColors = remember { mutableStateListOf<String>() }
     var isColorPickerOpen by remember { mutableStateOf(false) }
 
     var isLoaded by remember { mutableStateOf(false) }
@@ -900,7 +941,7 @@ fun DiceRollerApp() {
     }
 
     val handleApplyColorToAll: (String) -> Unit = { themeName ->
-        val updated = List(4) { themeName }
+        val updated = List(MAX_DICE) { themeName }
         diceColors = updated
         scope.launch {
             saveDiceColors(context, updated)
@@ -961,9 +1002,9 @@ fun DiceRollerApp() {
         }
     }
 
-    // 2D Dice Animation states (one for each of up to 4 dice)
+    // 2D Dice Animation states (one for each of up to MAX_DICE dice)
     val dieStates = remember {
-        List(4) {
+        List(MAX_DICE) {
             DieAnimState(
                 rotationZ = Animatable(0f),
                 timeProgress = Animatable(1f),
@@ -994,6 +1035,16 @@ fun DiceRollerApp() {
         }
     }
 
+    // Re-pick random colors whenever the assignment or the number of dice changes.
+    LaunchedEffect(diceColors, numberOfDice) {
+        val resolved = resolveDiceColors(
+            List(numberOfDice) { diceColors.getOrElse(it) { "Porcelán" } },
+            CHEMISTRY_THEME_NAMES
+        )
+        shownDiceColors.clear()
+        shownDiceColors.addAll(resolved)
+    }
+
     LaunchedEffect(selectedDieTypeId) {
         for (i in displayValues.indices) {
             if (displayValues[i] > currentDieType.sides) {
@@ -1010,6 +1061,11 @@ fun DiceRollerApp() {
 
                 // Staggered roll animations for each die
                 val finalValues = rollDice(numberOfDice, currentDieType.sides)
+                // Random-color dice get fresh, distinct colors on every roll, swapped in at the apex.
+                val rolledColors = resolveDiceColors(
+                    List(numberOfDice) { diceColors.getOrElse(it) { "Porcelán" } },
+                    CHEMISTRY_THEME_NAMES
+                )
                 
                 val jobs = (0 until numberOfDice).map { i ->
                     launch {
@@ -1047,6 +1103,9 @@ fun DiceRollerApp() {
                         val swapJob = launch {
                             delay(280L)
                             displayValues[i] = finalValues[i]
+                            if (i < shownDiceColors.size) {
+                                shownDiceColors[i] = rolledColors[i]
+                            }
                             if (!isMuted) {
                                 AudioSynth.playRollClick(context)
                             }
@@ -1270,11 +1329,7 @@ fun DiceRollerApp() {
                         activeProfile?.presets?.forEach { preset ->
                             item(key = preset.id) {
                                 val isSelected = profileStore.activePresetId == preset.id
-                                val countCzechStr = when (preset.count) {
-                                    1 -> "1 kostka"
-                                    2, 3, 4 -> "${preset.count} kostky"
-                                    else -> "${preset.count} kostek"
-                                }
+                                val countCzechStr = czechDiceCount(preset.count)
                                 val dieNameCzech = when (preset.dieTypeId) {
                                     "pips" -> "s body (d6)"
                                     "numeral" -> "s čísly (d6)"
@@ -1315,7 +1370,7 @@ fun DiceRollerApp() {
                     isRolling = isRolling,
                     dieStates = dieStates,
                     dieType = currentDieType,
-                    diceColors = diceColors,
+                    diceColors = shownDiceColors,
                     onDiceClick = { triggerRoll() }
                 )
             }
@@ -1490,7 +1545,7 @@ fun PlaygroundSection(
     isRolling: Boolean,
     dieStates: List<DieAnimState>,
     dieType: DieType,
-    diceColors: List<String> = List(4) { "Porcelán" },
+    diceColors: List<String> = List(MAX_DICE) { "Porcelán" },
     onDiceClick: () -> Unit
 ) {
     // Approved color tokens with contrast ratios in comments as requested:
@@ -1548,13 +1603,19 @@ fun PlaygroundSection(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            // Active Dice viewport with subtle glow
-            Box(
+            // Active Dice viewport with subtle glow: up to MAX_DICE_PER_ROW dice per row, every
+            // die the same square size with equal gaps, so no die is squeezed by its neighbours.
+            BoxWithConstraints(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
+                    .heightIn(min = 220.dp)
+                    .clickable { onDiceClick() }
+                    .testTag("dice_throw_area")
             ) {
+                val rowSizes = diceRowSizes(numberOfDice)
+                val faceSize = dieFaceSize(numberOfDice, maxWidth.value, DiceAnimConfig.diceGapDp.value).dp
+
                 // Glow Effect behind the dice
                 Box(
                     modifier = Modifier
@@ -1562,117 +1623,28 @@ fun PlaygroundSection(
                         .background(linkColor.copy(alpha = 0.1f), CircleShape)
                 )
 
-                // Active Dice Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .clickable { onDiceClick() }
-                        .testTag("dice_throw_area"),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(DiceAnimConfig.diceGapDp)
                 ) {
-                    for (i in 0 until numberOfDice) {
-                        if (i < displayValues.size) {
-                            val state = dieStates[i]
-                            val progress = state.timeProgress.value
-                            val rotationZ = state.rotationZ.value
-                            val velocity = state.rotationZ.velocity
-                            val driftX = state.driftX
-
-                            val themeName = diceColors.getOrElse(i) { "Porcelán" }
-                            val chemistryTheme = getChemistryThemeByName(themeName)
-
-                            val faceSize = if (numberOfDice == 1) 130.dp else if (numberOfDice == 2) 105.dp else 82.dp
-                            
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.wrapContentSize()
-                            ) {
-                                ContactShadow(
-                                    progress = progress,
-                                    isDarkTheme = isDarkTheme,
-                                    modifier = Modifier.offset(y = faceSize / 2)
-                                )
-                                DiceFaceSmearContainer(
-                                    content = dieType.contentFor(displayValues[i]),
-                                    progress = progress,
-                                    rotationZ = rotationZ,
-                                    velocity = velocity,
-                                    driftX = driftX,
-                                    isDarkTheme = isDarkTheme,
-                                    modifier = Modifier.size(faceSize),
-                                    dieTypeId = dieType.id,
-                                    theme = chemistryTheme
-                                )
-
-                                // Static Identity Chip (Sibling, stays outside graphicsLayer, anchors below)
-                                Row(
-                                    modifier = Modifier
-                                        .offset(y = (faceSize / 2) + 22.dp)
-                                        .background(
-                                            color = if (isDarkTheme) Color(0xFF334155) else Color(0xFFE2E8F0),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isDarkTheme) Color(0xFF475569) else Color(0xFFCBD5E1),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 3.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    // Mini color theme indicator pip
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(chemistryTheme.baseColor, CircleShape)
-                                            .border(
-                                                width = 0.5.dp,
-                                                color = if (chemistryTheme.name == "Porcelán") Color.Gray else chemistryTheme.pipColor,
-                                                shape = CircleShape
-                                            )
-                                    )
-
-                                    val icon = when (dieType.id) {
-                                        "d4" -> DiceIcons.D4
-                                        "d8" -> DiceIcons.D8
-                                        "d10" -> DiceIcons.D10
-                                        "d12" -> DiceIcons.D12
-                                        "d20" -> DiceIcons.D20
-                                        else -> DiceIcons.D6
-                                    }
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = null,
-                                        tint = if (isDarkTheme) Color(0xFFCBD5E1) else Color(0xFF475569),
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Text(
-                                        text = when (dieType.id) {
-                                            "pips", "numeral" -> {
-                                                if (numberOfDice > 1) "d6 (${chemistryTheme.labelCzech})" else "d6"
-                                            }
-                                            else -> {
-                                                if (dieType.id.startsWith("swatch")) {
-                                                    val parts = dieType.id.split("_")
-                                                    val modeName = parts.getOrNull(1) ?: "six_color"
-                                                    val label = when (modeName) {
-                                                        "two_color" -> "2 barvy"
-                                                        "three_color" -> "3 barvy"
-                                                        else -> "6 barev"
-                                                    }
-                                                    "d6 · $label"
-                                                } else {
-                                                    dieType.id
-                                                }
-                                            }
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (isDarkTheme) Color(0xFFF1F5F9) else Color(0xFF0F172A),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 10.sp
+                    var firstIndex = 0
+                    rowSizes.forEach { rowSize ->
+                        val rowStart = firstIndex
+                        firstIndex += rowSize
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(DiceAnimConfig.diceGapDp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            for (i in rowStart until rowStart + rowSize) {
+                                if (i < displayValues.size && i < dieStates.size) {
+                                    DieCell(
+                                        index = i,
+                                        value = displayValues[i],
+                                        state = dieStates[i],
+                                        faceSize = faceSize,
+                                        dieType = dieType,
+                                        themeName = diceColors.getOrElse(i) { "Porcelán" },
+                                        isDarkTheme = isDarkTheme
                                     )
                                 }
                             }
@@ -1694,6 +1666,114 @@ fun PlaygroundSection(
     }
 }
 
+/** One die in the playground grid: a square face of [faceSize] with its identity chip below. */
+@Composable
+fun DieCell(
+    index: Int,
+    value: Int,
+    state: DieAnimState,
+    faceSize: Dp,
+    dieType: DieType,
+    themeName: String,
+    isDarkTheme: Boolean
+) {
+    val chemistryTheme = getChemistryThemeByName(themeName)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.width(faceSize)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(faceSize)
+                .aspectRatio(1f)
+                .semantics { contentDescription = "Kostka ${index + 1}: ${chemistryTheme.labelCzech}" }
+                .testTag("die_face_$index")
+        ) {
+            ContactShadow(
+                progress = state.timeProgress.value,
+                isDarkTheme = isDarkTheme,
+                modifier = Modifier.offset(y = faceSize / 2)
+            )
+            DiceFaceSmearContainer(
+                content = dieType.contentFor(value),
+                progress = state.timeProgress.value,
+                rotationZ = state.rotationZ.value,
+                velocity = state.rotationZ.velocity,
+                driftX = state.driftX,
+                isDarkTheme = isDarkTheme,
+                modifier = Modifier.fillMaxSize(),
+                dieTypeId = dieType.id,
+                theme = chemistryTheme
+            )
+        }
+
+        // Static Identity Chip (stays outside graphicsLayer, anchored below the face)
+        Row(
+            modifier = Modifier
+                .background(
+                    color = if (isDarkTheme) Color(0xFF334155) else Color(0xFFE2E8F0),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isDarkTheme) Color(0xFF475569) else Color(0xFFCBD5E1),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Mini color theme indicator pip
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(chemistryTheme.baseColor, CircleShape)
+                    .border(
+                        width = 0.5.dp,
+                        color = if (chemistryTheme.name == "Porcelán") Color.Gray else chemistryTheme.pipColor,
+                        shape = CircleShape
+                    )
+            )
+
+            val icon = when (dieType.id) {
+                "d4" -> DiceIcons.D4
+                "d8" -> DiceIcons.D8
+                "d10" -> DiceIcons.D10
+                "d12" -> DiceIcons.D12
+                "d20" -> DiceIcons.D20
+                else -> DiceIcons.D6
+            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isDarkTheme) Color(0xFFCBD5E1) else Color(0xFF475569),
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                text = when {
+                    dieType.id == "pips" || dieType.id == "numeral" -> "d6"
+                    // The D6 icon already precedes the label, so swatch dice only name their color count.
+                    dieType.id.startsWith("swatch") -> when (dieType.id.removePrefix("swatch_")) {
+                        "two_color" -> "2 barvy"
+                        "three_color" -> "3 barvy"
+                        else -> "6 barev"
+                    }
+                    else -> dieType.id
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isDarkTheme) Color(0xFFF1F5F9) else Color(0xFF0F172A),
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
 // ==========================================
 // CONFIGURATION OBJECT
 // ==========================================
@@ -1704,6 +1784,7 @@ object DiceAnimConfig {
     const val rotationTurnsMin = 2.5f
     const val rotationTurnsMax = 3.5f
     val faceSizeDp = 90.dp
+    val diceGapDp = 12.dp
     const val smearCopies = 5
     const val smearMaxAlpha = 0.75f
     const val settleJitterDeg = 5f
@@ -2221,7 +2302,6 @@ fun ChemistryDiceColorSection(
     var selectedDieIndex by remember { mutableStateOf(0) }
     val safeDieIndex = selectedDieIndex.coerceIn(0, (numberOfDice - 1).coerceAtLeast(0))
     val currentThemeName = diceColors.getOrElse(safeDieIndex) { "Porcelán" }
-    val currentTheme = getChemistryThemeByName(currentThemeName)
 
     val bgColor = if (isDarkTheme) Color(0xFF0F172A) else Color(0xFFFFFFFF)
     val textColor = if (isDarkTheme) Color(0xFFF1F5F9) else Color(0xFF0F172A)
@@ -2260,7 +2340,7 @@ fun ChemistryDiceColorSection(
             }
 
             Text(
-                text = "7 minerálních témat",
+                text = "${CHEMISTRY_THEMES.size} barev + náhodná",
                 style = MaterialTheme.typography.labelSmall,
                 color = textMutedColor
             )
@@ -2287,17 +2367,17 @@ fun ChemistryDiceColorSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 for (dieIdx in 0 until numberOfDice) {
                     val isTabSelected = safeDieIndex == dieIdx
                     val assignedThemeName = diceColors.getOrElse(dieIdx) { "Porcelán" }
-                    val assignedTheme = getChemistryThemeByName(assignedThemeName)
 
                     OutlinedButton(
                         onClick = { selectedDieIndex = dieIdx },
                         modifier = Modifier
                             .weight(1f)
+                            .semantics { contentDescription = "Kostka ${dieIdx + 1}: ${dieColorLabel(assignedThemeName)}" }
                             .testTag("die_color_tab_$dieIdx"),
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = if (isTabSelected) btnBgColor.copy(alpha = 0.15f) else Color.Transparent,
@@ -2308,24 +2388,15 @@ fun ChemistryDiceColorSection(
                             color = if (isTabSelected) linkColor else borderDecorColor
                         ),
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .background(assignedTheme.baseColor, CircleShape)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (assignedTheme.name == "Porcelán") Color.Gray else assignedTheme.pipColor,
-                                        shape = CircleShape
-                                    )
-                            )
+                            DieColorDot(themeName = assignedThemeName, size = 12.dp)
                             Text(
-                                text = "Kostka ${dieIdx + 1}",
+                                text = "${dieIdx + 1}",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (isTabSelected) FontWeight.Bold else FontWeight.Medium
                             )
@@ -2335,95 +2406,50 @@ fun ChemistryDiceColorSection(
             }
         }
 
-        // Palette Theme Options List
-        Column(
+        // Compact swatch grid: every theme plus the random mode, no text labels
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(bgColor, RoundedCornerShape(12.dp))
                 .border(1.dp, borderDecorColor, RoundedCornerShape(12.dp))
                 .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            CHEMISTRY_THEMES.forEach { theme ->
-                val isSelected = currentThemeName.equals(theme.name, ignoreCase = true)
+            (CHEMISTRY_THEME_NAMES + RANDOM_DIE_COLOR).forEach { themeName ->
+                val isSelected = currentThemeName.equals(themeName, ignoreCase = true)
 
-                Row(
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = if (isSelected) linkColor.copy(alpha = 0.12f) else Color.Transparent,
-                            shape = RoundedCornerShape(8.dp)
-                        )
+                        .size(40.dp)
                         .border(
-                            width = if (isSelected) 1.5.dp else 0.5.dp,
-                            color = if (isSelected) linkColor else borderDecorColor.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(8.dp)
+                            width = 2.dp,
+                            color = if (isSelected) linkColor else Color.Transparent,
+                            shape = CircleShape
                         )
+                        .padding(4.dp)
+                        .clip(CircleShape)
                         .clickable {
-                            onDiceColorChange(safeDieIndex, theme.name)
+                            onDiceColorChange(safeDieIndex, themeName)
                         }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                        .testTag("theme_option_${theme.name.lowercase().replace(" ", "_")}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .semantics { contentDescription = dieColorLabel(themeName) }
+                        .testTag("theme_option_${themeName.lowercase().replace(" ", "_")}")
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Die preview tile
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(theme.baseColor, RoundedCornerShape(8.dp))
-                                .border(
-                                    width = 1.dp,
-                                    color = when (theme.name) {
-                                        "Porcelán" -> Color(0xFF94A3B8)
-                                        "Grafit" -> Color(0xFF64748B)
-                                        else -> theme.baseColor.copy(alpha = 0.7f)
-                                    },
-                                    shape = RoundedCornerShape(8.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(theme.pipColor, CircleShape)
-                            )
-                        }
-
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = theme.labelCzech,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textColor
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "(${theme.translationSub})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = textMutedColor
-                                )
-                            }
-                            Text(
-                                text = "${theme.baseHex} · body: ${if (theme.name == "Grafit") "světlé (#F5F5F5)" else "černé (#1A1A1A)"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = text2Color,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    if (isSelected) {
+                    DieColorDot(themeName = themeName, size = 32.dp)
+                    if (themeName == RANDOM_DIE_COLOR) {
+                        Icon(
+                            imageVector = Icons.Default.Shuffle,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    } else if (isSelected) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = "Vybráno",
-                            tint = linkColor,
-                            modifier = Modifier.size(20.dp)
+                            contentDescription = null,
+                            tint = getChemistryThemeByName(themeName).pipColor,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -2434,7 +2460,7 @@ fun ChemistryDiceColorSection(
         if (numberOfDice > 1) {
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
-                onClick = { onApplyColorToAll(currentTheme.name) },
+                onClick = { onApplyColorToAll(currentThemeName) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("apply_to_all_colors_button"),
@@ -2452,7 +2478,7 @@ fun ChemistryDiceColorSection(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Použít \"${currentTheme.labelCzech}\" pro všechny kostky",
+                    text = "Použít \"${dieColorLabel(currentThemeName)}\" pro všechny kostky",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -2460,6 +2486,33 @@ fun ChemistryDiceColorSection(
         }
     }
 }
+
+/** Filled circle in a die color; the random mode is drawn as a rainbow. */
+@Composable
+fun DieColorDot(themeName: String, size: Dp, modifier: Modifier = Modifier) {
+    val dotModifier = if (themeName == RANDOM_DIE_COLOR) {
+        modifier.background(Brush.sweepGradient(RANDOM_SWATCH_COLORS), CircleShape)
+    } else {
+        val theme = getChemistryThemeByName(themeName)
+        modifier
+            .background(theme.baseColor, CircleShape)
+            .border(
+                width = 1.dp,
+                color = when (theme.name) {
+                    "Porcelán" -> Color(0xFF94A3B8)
+                    "Grafit" -> Color(0xFF64748B)
+                    else -> theme.pipColor.copy(alpha = 0.35f)
+                },
+                shape = CircleShape
+            )
+    }
+    Box(modifier = dotModifier.size(size))
+}
+
+private val RANDOM_SWATCH_COLORS = listOf(
+    Color(0xFFE34234), Color(0xFFFF9900), Color(0xFFFFE600), Color(0xFF0BDA51),
+    Color(0xFF007FFF), Color(0xFF9966CC), Color(0xFFF06292), Color(0xFFE34234)
+)
 
 // ==========================================
 // CHEMISTRY COLOR CUSTOMIZER DIALOG
@@ -2719,7 +2772,7 @@ fun SettingsPanel(
                     .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                (1..3).forEach { count ->
+                (MIN_DICE..MAX_DICE).forEach { count ->
                     val isSelected = count == numberOfDice
                     Button(
                         onClick = { onNumberChange(count) },
@@ -2734,7 +2787,7 @@ fun SettingsPanel(
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(
-                            text = if (count == 1) "1 kostka" else if (count == 2) "2 kostky" else "3 kostky",
+                            text = count.toString(),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -3811,7 +3864,7 @@ fun ProfileManagementDialog(
                                             color = textColor
                                         )
                                         Text(
-                                            text = "${preset.count} kostky · ${preset.dieTypeId}",
+                                            text = "${czechDiceCount(preset.count)} · ${preset.dieTypeId}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = textMutedColor
                                         )
@@ -4122,7 +4175,7 @@ fun ProfileManagementDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Count selector (1..4 stepper)
+                    // Count selector (MIN_DICE..MAX_DICE stepper)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -4140,8 +4193,8 @@ fun ProfileManagementDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             IconButton(
-                                onClick = { if (count > 1) count-- },
-                                enabled = count > 1,
+                                onClick = { if (count > MIN_DICE) count-- },
+                                enabled = count > MIN_DICE,
                                 modifier = Modifier
                                     .background(bgColor, RoundedCornerShape(8.dp))
                                     .border(1.dp, borderDecorColor, RoundedCornerShape(8.dp))
@@ -4159,8 +4212,8 @@ fun ProfileManagementDialog(
                             )
 
                             IconButton(
-                                onClick = { if (count < 4) count++ },
-                                enabled = count < 4,
+                                onClick = { if (count < MAX_DICE) count++ },
+                                enabled = count < MAX_DICE,
                                 modifier = Modifier
                                     .background(bgColor, RoundedCornerShape(8.dp))
                                     .border(1.dp, borderDecorColor, RoundedCornerShape(8.dp))
