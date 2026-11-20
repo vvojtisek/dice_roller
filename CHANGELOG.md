@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/vvojtisek/dice_roller/compare/v1.2.0...v1.2.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **ci:** restore executable bit on gradlew ([dc35188](https://github.com/vvojtisek/dice_roller/commit/dc351885ad64c8ce8822a755761f6b2f7fbb7eea))
+* **ci:** restore executable bit on gradlew ([a0a4cc8](https://github.com/vvojtisek/dice_roller/commit/a0a4cc8378df27087a344c8b68d603daaf959ebd))
+
 ## [1.2.0](https://github.com/vvojtisek/dice_roller/compare/v1.1.0...v1.2.0) (2026-10-24)
 
 
